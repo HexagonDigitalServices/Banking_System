@@ -1,10 +1,3 @@
-import express from "express";
-import { protect } from "../middleware/auth.js";
-import Account from "../models/Account.js";
-import Transaction from "../models/Transaction.js";
-
-const userRouter = express.Router();
-
 userRouter.get("/analytics", protect, async (req, res) => {
   try {
     const accounts = await Account.find({ userId: req.user._id });
@@ -45,12 +38,10 @@ userRouter.get("/analytics", protect, async (req, res) => {
       const toMe = t.toAccount && ids.includes(t.toAccount.toString());
       const fromMe = t.fromAccount && ids.includes(t.fromAccount.toString());
 
-      // Income: deposits to me, OR transfers from OUTSIDE (not my own account)
       const isIncome =
         (t.type === "deposit" && toMe) ||
         (t.type === "transfer" && toMe && !fromMe);
 
-      // Expense: withdrawals from me, OR transfers to OUTSIDE (not my own account)
       const isExpense =
         (t.type === "withdrawal" && fromMe) ||
         (t.type === "transfer" && fromMe && !toMe);
@@ -64,7 +55,6 @@ userRouter.get("/analytics", protect, async (req, res) => {
         categoryMap[cat] += t.amount;
         totalSpending += t.amount;
       }
-      // Internal transfers (both fromMe and toMe) are ignored in both income and spending
     });
 
     const categoryColors = {
@@ -108,5 +98,3 @@ userRouter.get("/analytics", protect, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-export default userRouter;
