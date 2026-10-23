@@ -1,5 +1,4 @@
-export const getDashboardStats = async (req, res) => {
-  try {
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const sevenDaysAgo = new Date();
@@ -78,7 +77,3 @@ export const getDashboardStats = async (req, res) => {
       distribution,
       recentActivity,
     });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
