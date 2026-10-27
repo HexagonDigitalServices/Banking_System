@@ -1,16 +1,4 @@
-userRouter.get("/analytics", protect, async (req, res) => {
-  try {
-    const accounts = await Account.find({ userId: req.user._id });
-    const accountIds = accounts.map((a) => a._id);
-    const transactions = await Transaction.find({
-      $or: [
-        { fromAccount: { $in: accountIds } },
-        { toAccount: { $in: accountIds } },
-      ],
-      status: "completed",
-    }).sort("-createdAt");
-
-    const monthlyData = {};
+   const monthlyData = {};
     const months = [
       "Jan",
       "Feb",
@@ -87,14 +75,3 @@ userRouter.get("/analytics", protect, async (req, res) => {
         }))
         .sort((a, b) => b.amount - a.amount);
     }
-
-    res.json({
-      success: true,
-      monthlyData: Object.values(monthlyData).slice(-6),
-      categories,
-      totalTransactions: transactions.length,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});

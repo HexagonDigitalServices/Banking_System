@@ -1,4 +1,10 @@
-await session.withTransaction(async () => {
+export const respondToRequest = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const { requestId, action, payFromAccountId } = req.body;
+    let result = null;
+
+    await session.withTransaction(async () => {
       const request = await MoneyRequest.findOne({
         _id: requestId,
         recipientUser: req.user._id,
@@ -92,4 +98,12 @@ await session.withTransaction(async () => {
           transaction: txn,
         };
       }
-    })
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    session.endSession();
+  }
+};

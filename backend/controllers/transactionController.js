@@ -1,3 +1,50 @@
+export const handleDeposit = (req, res, query, isUser) =>
+  atomic(res, async (session) => {
+    const amt = parseFloat(req.body.amount);
+    if (isNaN(amt) || amt <= 0) throw new Error("Invalid amount.");
+    const acc = await Account.findOneAndUpdate(
+      query,
+      { $inc: { balance: amt } },
+      { new: true, session },
+    );
+    if (!acc) throw new Error("Account not found.");
+    if (
+      acc.accountType === "current" &&
+      acc.balance >= (acc.minimumBalance || MIN_BAL) &&
+      acc.penaltyApplied
+    )
+      await Account.findByIdAndUpdate(
+        acc._id,
+        { penaltyApplied: false },
+        { session },
+      );
+    const txn = await saveTxn(
+      {
+        type: "deposit",
+        toAccount: acc._id,
+        toAccountNumber: acc.accountNumber,
+        amount: amt,
+        description: req.body.description || req.body.remarks || "Deposit",
+        category: req.body.category || "Other",
+        balanceAfterTransaction: acc.balance,
+        initiatedBy: req.user._id,
+        ...(!isUser && { processedBy: req.user._id }),
+      },
+      session,
+    );
+    if (isUser)
+      notify(
+        req.user._id,
+        "Deposit Successful",
+        `₹${amt} deposited.`,
+        "success",
+      );
+    return {
+      message: "Deposit successful.",
+      transaction: txn,
+      newBalance: acc.balance,
+    };
+  });
 
 export const handleWithdraw = (req, res, query, isUser) =>
   atomic(res, async (session) => {
@@ -147,3 +194,65 @@ export const handleTransfer = (req, res, fromQ, toQ, isUser) =>
       newBalance: from.balance - amt - penalty - fee,
     };
   });
+
+
+export const getReports = async (req, res) => {
+  try {
+    const { fromDate, toDate, accountNumber, type } = req.query;
+    const q = {};
+    if (fromDate && toDate)
+      q.createdAt = {
+        $gte: new Date(fromDate),
+        $lte: new Date(new Date(toDate).setHours(23, 59, 59, 999)),
+      };
+    if (type && type !== "all") q.type = type;
+    if (accountNumber && accountNumber !== "all") {
+      const acc = await Account.findOne({
+        accountNumber: accountNumber.trim(),
+      });
+      if (acc) q.$or = [{ fromAccount: acc._id }, { toAccount: acc._id }];
+    }
+    const txns = await Transaction.find(q)
+      .populate(
+        "fromAccount toAccount initiatedBy",
+        "accountNumber firstName lastName",
+      )
+      .sort("-createdAt")
+      .limit(1000);
+    const summary = txns.reduce(
+      (acc, t) => {
+        const val = t.amount + (t.fee || 0);
+        if (t.type === "deposit") acc.totalDeposits += t.amount;
+        else if (t.type === "withdrawal") acc.totalWithdrawals += val;
+        else if (t.type === "transfer") acc.totalTransfers += t.amount;
+        return acc;
+      },
+      {
+        total: txns.length,
+        totalDeposits: 0,
+        totalWithdrawals: 0,
+        totalTransfers: 0,
+      },
+    );
+    const dailyMap = txns.reduce((acc, t) => {
+      const d = new Date(t.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      if (!acc[d])
+        acc[d] = { date: d, deposits: 0, withdrawals: 0, transfers: 0 };
+      if (t.type === "deposit") acc[d].deposits += t.amount;
+      else if (t.type === "withdrawal")
+        acc[d].withdrawals += t.amount + (t.fee || 0);
+      else if (t.type === "transfer") acc[d].transfers += t.amount;
+      return acc;
+    }, {});
+    return ok(res, 200, {
+      transactions: txns,
+      summary,
+      dailyTrend: Object.values(dailyMap).slice(-14),
+    });
+  } catch (e) {
+    return fail(res, 500, e.message);
+  }
+};
