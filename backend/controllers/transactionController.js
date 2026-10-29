@@ -1,23 +1,4 @@
-export const handleDeposit = (req, res, query, isUser) =>
-  atomic(res, async (session) => {
-    const amt = parseFloat(req.body.amount);
-    if (isNaN(amt) || amt <= 0) throw new Error("Invalid amount.");
-    const acc = await Account.findOneAndUpdate(
-      query,
-      { $inc: { balance: amt } },
-      { new: true, session },
-    );
-    if (!acc) throw new Error("Account not found.");
-    if (
-      acc.accountType === "current" &&
-      acc.balance >= (acc.minimumBalance || MIN_BAL) &&
-      acc.penaltyApplied
-    )
-      await Account.findByIdAndUpdate(
-        acc._id,
-        { penaltyApplied: false },
-        { session },
-      );
+
     const txn = await saveTxn(
       {
         type: "deposit",
@@ -32,19 +13,7 @@ export const handleDeposit = (req, res, query, isUser) =>
       },
       session,
     );
-    if (isUser)
-      notify(
-        req.user._id,
-        "Deposit Successful",
-        `₹${amt} deposited.`,
-        "success",
-      );
-    return {
-      message: "Deposit successful.",
-      transaction: txn,
-      newBalance: acc.balance,
-    };
-  });
+
 
 export const handleWithdraw = (req, res, query, isUser) =>
   atomic(res, async (session) => {
